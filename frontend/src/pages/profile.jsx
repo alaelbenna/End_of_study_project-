@@ -1,20 +1,120 @@
-import React, { useState } from "react";
-import { Avatar, Typography } from "@material-tailwind/react";
+import React, { useState, useEffect } from "react";
+import { Typography } from "@material-tailwind/react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import { Footer } from "@/widgets/layout";
 
 export function Profile() {
+  const [stadiums, setStadiums] = useState([]); // Ensure stadiums is initialized as an array
+  const [selectedStadium, setSelectedStadium] = useState(""); // Store selected stadium ID
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("17:00 - 18:30");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [reservationStatus, setReservationStatus] = useState(null); // To track reservation status
+  const [reservations, setReservations] = useState([]); // To store user-specific reservations
 
+  const token = localStorage.getItem("accessToken"); // Assuming token is stored in localStorage
+  useEffect(() => {
+    const fetchStadiums = async () => {
+      try {
+        const response = await fetch("http://localhost:4000/api/stadiums");
+        const data = await response.json();
+        console.log("Fetched stadiums:", data); // Debugging log
+
+        if (Array.isArray(data)) {
+          setStadiums(data);
+        } else {
+          console.error("API did not return an array:", data);
+          setStadiums([]); // Fallback to empty array
+        }
+      } catch (error) {
+        console.error("Error fetching stadiums:", error);
+        setStadiums([]); // Ensure state is an array
+      }
+    };
+
+    fetchStadiums();
+  }, []);
+
+      
+    
+  // Handle date change
   const handleDateChange = (date) => {
     setSelectedDate(date);
   };
 
+  // Handle time slot change
   const handleTimeSlotChange = (event) => {
     setSelectedTimeSlot(event.target.value);
   };
+
+  // Fetch reservations for the logged-in user
+  const fetchReservations = async () => {
+    try {
+      const response = await fetch("http://localhost:4000/api/reservations/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setReservations(data.reservations); // Update state with fetched reservations
+      } else {
+        console.error("Error fetching reservations:", data.message);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
+  // Handle form submission
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!selectedStadium) {
+      setReservationStatus("Please select a stadium.");
+      return;
+    }
+    const reservationData = {
+      stadiumId: selectedStadium,
+
+      name: fullName,
+      email: email,
+      phone: phone,
+      date: selectedDate.toDateString(),
+      timeSlot: selectedTimeSlot,
+    };
+
+    try {
+      const response = await fetch("http://localhost:4000/api/reservations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(reservationData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setReservationStatus("Reservation successful!");
+        fetchReservations(); // Fetch updated reservations for the user
+      } else {
+        setReservationStatus(`Error: ${data.message}`);
+      }
+    } catch (error) {
+      setReservationStatus("An error occurred. Please try again.");
+    }
+  };
+
+  // Fetch reservations when the component mounts
+  useEffect(() => {
+    if (token) {
+      fetchReservations();
+    }
+  }, [token]);
 
   return (
     <>
@@ -30,28 +130,6 @@ export function Profile() {
           <div className="container mx-auto">
             <div className="flex flex-col lg:flex-row justify-between gap-8">
               {/* Profile Information */}
-              <div className="relative flex gap-6 items-start">
-                <div className="-mt-16 md:-mt-20 w-28 md:w-40">
-                  <Avatar
-                    src="/img/team-5.png"
-                    alt="Profile picture"
-                    variant="circular"
-                    className="h-full w-full"
-                  />
-                </div>
-                <div className="flex flex-col mt-2">
-                  <Typography variant="h4" color="blue-gray" className="text-lg md:text-2xl">
-                    Jenna Stones
-                  </Typography>
-                  <Typography
-                    variant="small"
-                    color="gray"
-                    className="!mt-0 font-normal text-sm md:text-base"
-                  >
-                    jena@mail.com
-                  </Typography>
-                </div>
-              </div>
             </div>
 
             {/* Reservation Form */}
@@ -59,7 +137,24 @@ export function Profile() {
               <Typography variant="h5" className="mb-6 text-blue-gray-800">
                 Reservation Form
               </Typography>
-              <form className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  {/* Stadium Selection */}
+      <label className="block mb-2">Select Stadium:</label>
+      <select
+        value={selectedStadium}
+        onChange={(e) => setSelectedStadium(e.target.value)}
+        className="w-full p-2 border rounded mb-4"
+        required
+      >
+        <option value="">Choose a stadium</option>
+        {stadiums.map((stadium) => (
+          <option key={stadium._id} value={stadium._id}>
+            {stadium.name}
+          </option>
+        ))}
+      </select>
+                </div>
                 <div>
                   <label
                     htmlFor="name"
@@ -70,8 +165,11 @@ export function Profile() {
                   <input
                     id="name"
                     type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                     className="w-full p-3 mt-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                     placeholder="Enter your full name"
+                    required
                   />
                 </div>
                 <div>
@@ -84,8 +182,11 @@ export function Profile() {
                   <input
                     id="email"
                     type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full p-3 mt-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                     placeholder="Enter your email"
+                    required
                   />
                 </div>
                 <div>
@@ -98,9 +199,32 @@ export function Profile() {
                   <input
                     id="phone"
                     type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
                     className="w-full p-3 mt-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
                     placeholder="Enter your phone number"
+                    required
                   />
+                </div>
+
+                {/* Display Status */}
+                {reservationStatus && (
+                  <div className="mt-4 text-center text-gray-700">
+                    <Typography className="font-semibold text-lg">
+                      {reservationStatus}
+                    </Typography>
+                  </div>
+                )}
+
+                <div className="flex justify-center mt-8">
+                  <button
+                    type="submit"
+                    className="p-3 text-white bg-gray-500 rounded-lg text-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                  >
+                    Reserve Now
+                  </button>
+                   {/* Reservation Status Message */}
+      {reservationStatus && <p className="mt-4 text-center">{reservationStatus}</p>}
                 </div>
               </form>
             </div>
@@ -118,9 +242,7 @@ export function Profile() {
               />
               <Typography className="mt-4 text-blue-gray-600">
                 Selected Date:{" "}
-                <span className="font-semibold">
-                  {selectedDate.toDateString()}
-                </span>
+                <span className="font-semibold">{selectedDate.toDateString()}</span>
               </Typography>
             </div>
 
@@ -152,23 +274,32 @@ export function Profile() {
               </Typography>
             </div>
 
-            {/* Submit Button */}
-            <div className="flex justify-center mt-8">
-              <button
-                type="submit"
-                className="p-3 text-white bg-gray-500 rounded-lg text-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300"
-              >
-                Reserve Now
-              </button>
+            {/* User Reservations */}
+            <div className="mt-8">
+              <Typography variant="h5" className="mb-4 text-blue-gray-800">
+                Your Reservations
+              </Typography>
+              {reservations.length > 0 ? (
+                <ul className="space-y-4">
+                  {reservations.map((res, index) => (
+                    <li key={index} className="p-4 bg-gray-200 rounded-lg shadow-md">
+                      <p className="font-semibold">{res.name}</p>
+                      <p>{res.email}</p>
+                      <p>{res.phone}</p>
+                      <p>
+                        {res.date} - {res.timeSlot}
+                      </p>
+                      <p>{res.stadium.name}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <Typography className="text-gray-600">No reservations found.</Typography>
+              )}
             </div>
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <div className="bg-white">
-        <Footer />
-      </div>
     </>
   );
 }
