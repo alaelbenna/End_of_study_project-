@@ -1,64 +1,40 @@
-import bcrypt from 'bcryptjs';
-import User from '../models/User.js';  // Assuming you have a User model for MongoDB
+import admin from "firebase-admin"; // Default import for firebase-admin
 
-// Register user
-export const registerUser = async (req, res) => {
-  const { email, password, age, isActive } = req.body;
+const { auth } = admin; // Destructure auth from the default import
+
+import User from "../models/User.js"; // Ensure the file extension is included for ES modules
+
+export const syncUser = async (req, res) => {
+  const { uid, email, firstName, lastName, gender } = req.body;
+  const token = req.headers.authorization?.split(" ")[1];
 
   try {
-    // Check if the user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+    // Verify Firebase token
+    const decodedToken = await auth().verifyIdToken(token);
+    if (decodedToken.uid !== uid) {
+      return res.status(403).json({ message: "Unauthorized request" });
     }
 
-    // Hash the password before saving it
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Check if the user already exists in MongoDB
+    let user = await User.findOne({ uid });
+    if (user) {
+      return res.status(200).json({ message: "User already exists in the database.", user });
+    }
 
-    // Create new user
-    const newUser = new User({
+    // Save new user to MongoDB
+    user = new User({
+      uid,
       email,
-      password: hashedPassword,
-      age,
-      isActive,
-    });
+      firstName,
+      lastName,
+      gender,
+      role: "user", // Default role
+    }); 
 
-    // Save the new user to the database
-    await newUser.save();
-
-    // Respond with success message
-    res.status(201).json({ message: 'User registered successfully!' });
-
+    await user.save();
+    res.status(201).json({ message: "User synced successfully.", user });
   } catch (error) {
-    // Handle any errors
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Login user
-export const loginUser = async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    // Check if the user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid email or password' });
-    }
-
-    // Compare the password with the hashed password stored in the database
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid email or password' });
-    }
-
-    // Respond with success message (you can add JWT token generation here)
-    res.status(200).json({ message: 'User logged in successfully!' });
-
-  } catch (error) {
-    // Handle any errors
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error syncing user:", error);
+    res.status(500).json({ message: "Failed to sync user." });
   }
 };
